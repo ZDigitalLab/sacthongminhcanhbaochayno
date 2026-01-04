@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Phòng Chống Cháy Nổ - KHKT 2026</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <i class="fas fa-fire-extinguisher"></i>
+            <h3>KHKT 2026</h3>
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="#dashboard" data-section="dashboard">
+                    <i class="fas fa-home"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#charts" data-section="charts">
+                    <i class="fas fa-chart-line"></i> Biểu đồ
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#controls" data-section="controls">
+                    <i class="fas fa-sliders-h"></i> Điều khiển
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#schedule" data-section="schedule">
+                    <i class="fas fa-clock"></i> Hẹn giờ
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#logs" data-section="logs">
+                    <i class="fas fa-history"></i> Nhật ký
+                </a>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <div class="connection-indicator">
+                <i class="fas fa-circle" id="sidebar-status-icon"></i>
+                <span id="sidebar-status-text">Đang kết nối...</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Top Navigation Bar -->
+        <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
+            <div class="container-fluid">
+                <button class="btn btn-link text-dark" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <span class="navbar-brand mb-0 h1">
+                    <i class="fas fa-shield-alt text-primary"></i>
+                    Hệ Thống Phòng Chống Cháy Nổ
+                </span>
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-success me-2" id="connection-status">
+                        <i class="fas fa-circle"></i> Đang kết nối...
+                    </span>
+                    <span class="text-muted" id="current-time"></span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Dashboard -->
+        <div class="container-fluid p-4">
+            <!-- Dashboard Section -->
+            <div id="dashboard" class="content-section active">
+                <!-- Stats Overview -->
+                <div class="row g-4 mb-4">
+                    <div class="col-xl-3 col-md-6">
+                        <div class="card stat-card stat-card-primary">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <p class="text-muted mb-1">Nhiệt độ trung bình</p>
+                                        <h3 class="mb-0" id="avg-temp">--</h3>
+                                        <small class="text-success"><i class="fas fa-arrow-down"></i> 2.3°C</small>
+                                    </div>
+                                    <div class="stat-icon bg-primary">
+                                        <i class="fas fa-thermometer-half"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-md-6">
+                        <div class="card stat-card stat-card-success">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <p class="text-muted mb-1">Pin Box</p>
+                                        <h3 class="mb-0" id="battery-stat">--</h3>
+                                        <small class="text-success"><i class="fas fa-bolt"></i> Đang sạc</small>
+                                    </div>
+                                    <div class="stat-icon bg-success">
+                                        <i class="fas fa-battery-three-quarters"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-md-6">
+                        <div class="card stat-card stat-card-warning">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <p class="text-muted mb-1">Công suất</p>
+                                        <h3 class="mb-0" id="power-stat">--</h3>
+                                        <small class="text-warning"><i class="fas fa-bolt"></i> Normal</small>
+                                    </div>
+                                    <div class="stat-icon bg-warning">
+                                        <i class="fas fa-plug"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-md-6">
+                        <div class="card stat-card stat-card-info">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <p class="text-muted mb-1">Chế độ</p>
+                                        <h3 class="mb-0" id="mode-stat">--</h3>
+                                        <div class="form-check form-switch mt-2">
+                                            <input class="form-check-input" type="checkbox" id="auto-mode-toggle">
+                                            <label class="form-check-label" for="auto-mode-toggle">Auto</label>
+                                        </div>
+                                    </div>
+                                    <div class="stat-icon bg-info">
+                                        <i class="fas fa-cog"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Temperature & Power Cards -->
+                <div class="row g-4 mb-4">
+                    <div class="col-xl-8">
+                        <div class="card h-100">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-temperature-high text-danger"></i> Giám sát nhiệt độ</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="temp-gauge-card">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="text-muted">Bề mặt</span>
+                                                <span class="badge bg-danger"><i class="fas fa-fire"></i></span>
+                                            </div>
+                                            <h2 class="mb-0"><span id="temp-surface">--</span>°C</h2>
+                                            <div class="progress mt-2" style="height: 8px;">
+                                                <div class="progress-bar bg-danger" id="temp-surface-bar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="temp-gauge-card">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="text-muted">Bên trong</span>
+                                                <span class="badge bg-primary"><i class="fas fa-box"></i></span>
+                                            </div>
+                                            <h2 class="mb-0"><span id="temp-inside">--</span>°C</h2>
+                                            <div class="progress mt-2" style="height: 8px;">
+                                                <div class="progress-bar bg-primary" id="temp-inside-bar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="temp-gauge-card">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="text-muted">Bên ngoài</span>
+                                                <span class="badge bg-info"><i class="fas fa-sun"></i></span>
+                                            </div>
+                                            <h2 class="mb-0"><span id="temp-outside">--</span>°C</h2>
+                                            <div class="progress mt-2" style="height: 8px;">
+                                                <div class="progress-bar bg-info" id="temp-outside-bar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="temp-gauge-card">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="text-muted">Môi trường</span>
+                                                <span class="badge bg-warning"><i class="fas fa-cloud-sun"></i></span>
+                                            </div>
+                                            <h2 class="mb-0"><span id="temp-environment">--</span>°C</h2>
+                                            <div class="progress mt-2" style="height: 8px;">
+                                                <div class="progress-bar bg-warning" id="temp-environment-bar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-bolt text-warning"></i> Điện & Pin</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="power-metric mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted"><i class="fas fa-plug"></i> Điện áp</span>
+                                        <h4 class="mb-0 text-primary"><span id="voltage">--</span> V</h4>
+                                    </div>
+                                    <div class="power-bar">
+                                        <div class="power-bar-fill bg-primary" id="voltage-bar"></div>
+                                    </div>
+                                </div>
+                                <div class="power-metric mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted"><i class="fas fa-charging-station"></i> Dòng sạc</span>
+                                        <h4 class="mb-0 text-success"><span id="current">--</span> A</h4>
+                                    </div>
+                                    <div class="power-bar">
+                                        <div class="power-bar-fill bg-success" id="current-bar"></div>
+                                    </div>
+                                </div>
+                                <div class="battery-display">
+                                    <div class="text-center mb-3">
+                                        <i class="fas fa-battery-three-quarters fa-3x text-success" id="battery-icon"></i>
+                                        <h2 class="mt-2 mb-0"><span id="battery">--</span>%</h2>
+                                        <small class="text-muted">Pin Box</small>
+                                    </div>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" id="battery-fill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div id="charts" class="content-section">
+                <div class="row g-4 mb-4">
+                    <div class="col-xl-8">
+                        <div class="card">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-chart-line text-primary"></i> Biểu đồ nhiệt độ theo thời gian</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="tempChart" height="80"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-4">
+                        <div class="card">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-chart-pie text-success"></i> Trạng thái thiết bị</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="deviceStatusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-4">
+                    <div class="col-xl-6">
+                        <div class="card">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-chart-bar text-warning"></i> Biểu đồ công suất</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="powerChart" height="100"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-6">
+                        <div class="card">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-battery-half text-info"></i> Lịch sử pin</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="batteryChart" height="100"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls Section -->
+            <div id="controls" class="content-section">
+                <h4 class="mb-4"><i class="fas fa-sliders-h"></i> Điều khiển thiết bị</h4>
+                <section class="control-section">
+                    <div class="row g-4">
+                        <!-- Fan Controls -->
+                        <div class="col-xl-6">
+                            <div class="card">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0"><i class="fas fa-fan"></i> Quạt làm mát</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="device-control mb-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1"><i class="fas fa-wind"></i> Quạt 1</h6>
+                                                <span class="badge bg-secondary" id="fan1-status">OFF</span>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input device-switch" type="checkbox" id="fan1-toggle" style="width: 3rem; height: 1.5rem;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="device-control">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1"><i class="fas fa-wind"></i> Quạt 2</h6>
+                                                <span class="badge bg-secondary" id="fan2-status">OFF</span>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input device-switch" type="checkbox" id="fan2-toggle" style="width: 3rem; height: 1.5rem;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Buzzer Controls -->
+                        <div class="col-xl-6">
+                            <div class="card">
+                                <div class="card-header bg-danger text-white">
+                                    <h5 class="mb-0"><i class="fas fa-bell"></i> Còi báo động</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="device-control mb-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1"><i class="fas fa-volume-up"></i> Còi 1</h6>
+                                                <span class="badge bg-secondary" id="buzzer1-status">OFF</span>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input device-switch" type="checkbox" id="buzzer1-toggle" style="width: 3rem; height: 1.5rem;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="device-control">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1"><i class="fas fa-volume-up"></i> Còi 2</h6>
+                                                <span class="badge bg-secondary" id="buzzer2-status">OFF</span>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input device-switch" type="checkbox" id="buzzer2-toggle" style="width: 3rem; height: 1.5rem;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Relay Control -->
+                        <div class="col-xl-12">
+                            <div class="card">
+                                <div class="card-header bg-warning text-dark">
+                                    <h5 class="mb-0"><i class="fas fa-power-off"></i> Relay điều khiển</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="device-control">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1"><i class="fas fa-toggle-on"></i> Relay chính</h6>
+                                                <span class="badge bg-secondary" id="relay-status">OFF</span>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input device-switch" type="checkbox" id="relay-toggle" style="width: 3rem; height: 1.5rem;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Schedule Section -->
+            <div id="schedule" class="content-section">
+                <h4 class="mb-4"><i class="fas fa-clock"></i> Lịch hẹn giờ</h4>
+                
+                <!-- Hẹn giờ ngắt sạc đặc biệt -->
+                <div class="row g-4 mb-4">
+                    <div class="col-xl-12">
+                        <div class="card border-warning">
+                            <div class="card-header bg-gradient-warning text-dark">
+                                <h5 class="mb-0"><i class="fas fa-battery-half"></i> Hẹn giờ ngắt sạc</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold">Thời gian sạc (giờ)</label>
+                                        <input type="number" class="form-control form-control-lg" id="charge-hours" min="0" max="24" value="0" placeholder="Giờ">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold">Phút</label>
+                                        <input type="number" class="form-control form-control-lg" id="charge-minutes" min="0" max="59" value="30" placeholder="Phút">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button class="btn btn-warning w-100 btn-lg" id="start-charge-timer">
+                                            <i class="fas fa-play-circle"></i> Bắt đầu sạc
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Hiển thị trạng thái hẹn giờ -->
+                                <div class="mt-4" id="charge-timer-status" style="display: none;">
+                                    <div class="alert alert-success">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h5 class="mb-1"><i class="fas fa-clock"></i> Đang sạc - Hẹn giờ</h5>
+                                                <p class="mb-0">Thời gian còn lại: <strong id="remaining-time">--:--:--</strong></p>
+                                                <small class="text-muted">Sẽ tự động ngắt sạc khi hết thời gian</small>
+                                            </div>
+                                            <button class="btn btn-danger" id="stop-charge-timer">
+                                                <i class="fas fa-stop-circle"></i> Hủy
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-xl-4">
+                        <div class="card">
+                            <div class="card-header bg-gradient-primary text-white">
+                                <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Tạo lịch thiết bị</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="schedule-form">
+                                    <div class="mb-3">
+                                        <label class="form-label">Thiết bị</label>
+                                        <select class="form-select" id="schedule-device">
+                                            <option value="fan1">Quạt 1</option>
+                                            <option value="fan2">Quạt 2</option>
+                                            <option value="buzzer1">Còi 1</option>
+                                            <option value="buzzer2">Còi 2</option>
+                                            <option value="relay">Relay</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Hành động</label>
+                                        <select class="form-select" id="schedule-action">
+                                            <option value="on">Bật</option>
+                                            <option value="off">Tắt</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Thời gian</label>
+                                        <input type="datetime-local" class="form-control" id="schedule-time">
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="schedule-repeat">
+                                            <label class="form-check-label" for="schedule-repeat">
+                                                Lặp lại hàng ngày
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="fas fa-save"></i> Lưu lịch
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-8">
+                        <div class="card">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-list"></i> Danh sách lịch hẹn</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Thiết bị</th>
+                                                <th>Hành động</th>
+                                                <th>Thời gian</th>
+                                                <th>Lặp lại</th>
+                                                <th>Trạng thái</th>
+                                                <th>Thao tác</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="schedule-list">
+                                            <tr>
+                                                <td colspan="6" class="text-center text-muted">Chưa có lịch hẹn nào</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Section -->
+            <div id="logs" class="content-section">
+                <h4 class="mb-4"><i class="fas fa-history"></i> Nhật ký hoạt động</h4>
+                <section class="log-section">
+                    <div class="card">
+                        <div class="card-header bg-white">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Lịch sử hệ thống</h5>
+                                <button class="btn btn-sm btn-outline-danger" id="clear-logs">
+                                    <i class="fas fa-trash"></i> Xóa
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="log-container" id="log-container">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> Chưa có hoạt động nào được ghi nhận
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Firebase SDK -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
