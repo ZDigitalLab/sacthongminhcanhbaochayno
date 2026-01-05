@@ -53,7 +53,6 @@ unsigned long lastLocationCheck = 0;
 unsigned long chargeTimerEnd = 0;
 bool chargeTimerActive = false;
 unsigned long lastChargeTimerCheck = 0;
-unsigned long chargeTimerStartTime = 0; // Thời gian bắt đầu sạc (millis boot time)
 
 // Biến cảnh báo (Khởi tạo = 0)
 unsigned long lastTimeSMS1 = 0;
@@ -67,17 +66,10 @@ const unsigned long TIME_LIMIT_CALL = 30000;
 // Biến trạng thái thông báo pin đầy (theo áp sạc)
 bool fullBatNotified = false;
 
-// Biến trạng thái thông báo hẹn giờ sạc xong
-bool chargeTimerDoneNotified = false;
-
 // Biến quản lý SIM & Firebase
 unsigned long lastSendFirebase = 0;
 unsigned long lastReadFirebase = 0; 
 String alertStatus = "An toan"; 
-
-// Biến khởi động hệ thống
-int sensorStartupCount = 0;
-const int STARTUP_SKIP_LIMIT = 5;
 
 // ====== Firebase Config ======
 String FIREBASE_URL = "https://khkt2026-66085-default-rtdb.asia-southeast1.firebasedatabase.app/";
@@ -150,10 +142,190 @@ void makeCall() {
   simSend("ATD" + String(PHONE_NUMBER) + ";", 1000);
 }
 // ==========================================
-//          FIREBASE COMMUNICATION (Qua WiFi)
+//          FIREBASE COMMUNICATION
 // ==========================================
-// Lưu ý: Giao tiếp Firebase sẽ được xử lý qua WiFi từ Web App
-// Module SIM chỉ dùng để gửi SMS/Call khi cảnh báo
+
+// Gửi dữ liệu cảm biến lên Firebase sensor/
+void sendDataToFirebase() {
+  Serial.println("========================================");
+  Serial.println("GUI DU LIEU CAM BIEN LEN sensor/");
+  
+  // GIẢI PHÁP: Gửi toàn bộ object bằng PUT method với X-HTTP-Method-Override
+  String url = FIREBASE_URL + FIREBASE_PATH_SENSOR + ".json";
+  if (FIREBASE_AUTH.length()) url += "?auth=" + FIREBASE_AUTH;
+  
+  Serial.println("URL: " + url);
+
+  // Validate và fix NaN values trước khi build JSON
+  if (isnan(t_in) || t_in < -100 || t_in > 200) t_in = 0;
+  if (isnan(t_out) || t_out < -100 || t_out > 200) t_out = 0;
+  if (isnan(t_surface) || t_surface < -100 || t_surface > 200) t_surface = 0;
+  if (isnan(t_dht) || t_dht < -100 || t_dht > 200) t_dht = 0;
+  if (isnan(h_dht) || h_dht < 0 || h_dht > 100) h_dht = 0;
+
+  // JSON chỉ chứa dữ liệu cảm biến
+  String json = "{";
+  json += "\"nhiet_do_ben_trong\":" + String(t_in, 1) + ",";
+  json += "\"nhiet_do_ben_ngoai\":" + String(t_out, 1) + ",";
+  json += "\"nhiet_do_be_mat\":" + String(t_surface, 1) + ",";
+  json += "\"nhiet_do_moi_truong\":" + String(t_dht, 1) + ",";
+  json += "\"do_am\":" + String(h_dht, 1) + ",";
+  json += "\"dien_ap\":" + String(v_bat, 2) + ",";
+  json += "\"dong_sac\":" + String(i_charge, 2) + ",";
+  json += "\"pin_box\":" + String((int)percentBat) + ",";
+  json += "\"khoi\":" + String(smokeDetected ? "true" : "false");
+  json += "}";
+
+  Serial.println("JSON: " + json);
+
+  simSend("AT+HTTPTERM", 200);
+  simSend("AT+HTTPINIT", 200);
+  simSend("AT+HTTPPARA=\"CID\",1", 200);
+  simSend("AT+HTTPPARA=\"URL\",\"" + url + "\"", 200);
+  simSend("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 200);
+  
+  // Thêm header X-HTTP-Method-Override để force PUT method
+  simSend("AT+HTTPPARA=\"USERDATA\",\"X-HTTP-Method-Override: PUT\"", 200);
+  
+  simSend("AT+HTTPDATA=" + String(json.length()) + ",5000", 300);
+  simSerial.print(json);
+  delay(500);
+  
+  // Dùng POST (1) nhưng với header override thành PUT
+  String resp = simSend("AT+HTTPACTION=1", 3000);
+  
+  // Kiểm tra kết quả
+  if (resp.indexOf("200") > 0 || resp.indexOf("204") > 0) {
+    Serial.println("-> Thanh cong! (sensor/ da duoc ghi de)");
+  } else {
+    Serial.println("-> That bai hoac timeout");
+    Serial.println("Response: " + resp);
+  }
+  
+  simSend("AT+HTTPTERM", 200);
+  Serial.println("========================================");
+}
+
+// Gửi trạng thái thiết bị lên Firebase controls/ (CHỈ khi AUTO)
+void sendControlStatusToFirebase() {
+  String url = FIREBASE_URL + FIREBASE_PATH_CONTROLS + ".json";
+  if (FIREBASE_AUTH.length()) url += "?auth=" + FIREBASE_AUTH;
+  
+  Serial.println("[AUTO] Dong bo controls/ ...");
+  Serial.println("URL: " + url);
+
+  // JSON trạng thái thiết bị (BAO GỒM auto mode)
+  String json = "{";
+  json += "\"auto\":" + String(autoMode ? "true" : "false") + ",";
+  json += "\"quat1\":" + String(fan1 ? "true" : "false") + ",";
+  json += "\"quat2\":" + String(fan2 ? "true" : "false") + ",";
+  json += "\"coi1\":" + String(buz1 ? "true" : "false") + ",";
+  json += "\"coi2\":" + String(buz2 ? "true" : "false") + ",";
+  json += "\"relay\":" + String(relayOn ? "true" : "false");
+  json += "}";
+
+  simSend("AT+HTTPTERM", 200);
+  simSend("AT+HTTPINIT", 200);
+  simSend("AT+HTTPPARA=\"CID\",1", 200);
+  simSend("AT+HTTPPARA=\"URL\",\"" + url + "\"", 200);
+  simSend("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 200);
+  simSend("AT+HTTPPARA=\"USERDATA\",\"X-HTTP-Method-Override: PUT\"", 200);
+  
+  simSend("AT+HTTPDATA=" + String(json.length()) + ",5000", 300);
+  simSerial.print(json);
+  delay(500);
+  
+  String resp = simSend("AT+HTTPACTION=1", 3000);
+  
+  if (resp.indexOf("200") > 0 || resp.indexOf("204") > 0) {
+    Serial.println("-> controls/ da dong bo");
+  } else {
+    Serial.println("-> Loi: " + resp);
+  }
+  
+  simSend("AT+HTTPTERM", 200);
+}
+
+// Đọc lệnh từ Firebase controls/
+void readControlFromFirebase() {
+  String url = FIREBASE_URL + FIREBASE_PATH_CONTROLS + ".json";
+  if (FIREBASE_AUTH.length()) url += "?auth=" + FIREBASE_AUTH;
+
+  simSend("AT+HTTPTERM", 200);
+  simSend("AT+HTTPINIT", 200);
+  simSend("AT+HTTPPARA=\"CID\",1", 200);
+  simSend("AT+HTTPPARA=\"URL\",\"" + url + "\"", 200);
+  simSend("AT+HTTPACTION=0", 3000); // GET (tối ưu timeout)
+  
+  simSerial.println("AT+HTTPREAD");
+  unsigned long t = millis();
+  String resp = "";
+  while(millis() - t < 2000) { // Giảm timeout xuống 2s
+    while(simSerial.available()) resp += (char)simSerial.read();
+  }
+  simSend("AT+HTTPTERM", 200);
+
+  if (resp.indexOf("{") > 0) { 
+    // Đọc mode TRƯỚC (quan trọng nhất)
+    bool oldMode = autoMode;
+    if (resp.indexOf("\"auto\":true") != -1) autoMode = true;
+    else if (resp.indexOf("\"auto\":false") != -1) autoMode = false;
+    
+    // Phát hiện thay đổi mode
+    if (oldMode != autoMode) {
+      Serial.print("[MODE CHANGE] ");
+      Serial.println(autoMode ? "AUTO" : "MANUAL");
+    }
+
+    // Đọc hẹn giờ sạc
+    int timerActiveIdx = resp.indexOf("\"charge_timer_active\":");
+    if (timerActiveIdx != -1) {
+      if (resp.indexOf("true", timerActiveIdx) != -1) {
+        chargeTimerActive = true;
+        int endIdx = resp.indexOf("\"charge_timer_end\":");
+        if (endIdx != -1) {
+          int numStart = endIdx + 19;
+          int numEnd = resp.indexOf(',', numStart);
+          if (numEnd == -1) numEnd = resp.indexOf('}', numStart);
+          String endTimeStr = resp.substring(numStart, numEnd);
+          endTimeStr.trim();
+          chargeTimerEnd = endTimeStr.toInt();
+        }
+      } else {
+        chargeTimerActive = false;
+        chargeTimerEnd = 0;
+      }
+    }
+
+    // CHẾ ĐỘ THỦ CÔNG: Đọc và áp dụng tất cả lệnh từ Firebase
+    if (!autoMode) {
+      Serial.println("[MANUAL] Doc lenh tu Web...");
+      
+      // Quạt
+      if (resp.indexOf("\"quat1\":true") != -1) fan1 = true;
+      else if (resp.indexOf("\"quat1\":false") != -1) fan1 = false;
+      
+      if (resp.indexOf("\"quat2\":true") != -1) fan2 = true;
+      else if (resp.indexOf("\"quat2\":false") != -1) fan2 = false;
+
+      // Còi
+      if (resp.indexOf("\"coi1\":true") != -1) buz1 = true;
+      else if (resp.indexOf("\"coi1\":false") != -1) buz1 = false;
+      
+      if (resp.indexOf("\"coi2\":true") != -1) buz2 = true;
+      else if (resp.indexOf("\"coi2\":false") != -1) buz2 = false;
+
+      // Relay
+      if (resp.indexOf("\"relay\":true") != -1) relayOn = true;
+      else if (resp.indexOf("\"relay\":false") != -1) relayOn = false;
+      
+      applyOutputs();
+      Serial.println("[MANUAL] Da ap dung!");
+    } else {
+      Serial.println("[AUTO] He thong tu xu ly");
+    }
+  }
+}
 
 // ==========================================
 //          CẢM BIẾN & ĐIỀU KHIỂN
@@ -216,6 +388,8 @@ void applyOutputs(){
   ledcWrite(2, fan1 ? 200 : 0);
   ledcWrite(3, fan2 ? 200 : 0);
 }
+int sensorStartupCount = 0;       // Biến đếm số lần đọc đầu tiên
+const int STARTUP_SKIP_LIMIT = 5;
 void checkSystemStatus() {
   if (sensorStartupCount < STARTUP_SKIP_LIMIT) {
     sensorStartupCount++;
@@ -232,53 +406,31 @@ void checkSystemStatus() {
   
   unsigned long now = millis();
 
-  // 1. XỬ LÝ HẸN GIỜ SẠC - CHỮA ĐỦ THÔNG TIN ĐỂ TÍNH TOÁN
-  if (chargeTimerActive && chargeTimerEnd > 0 && chargeTimerStartTime > 0) {
-    // Tính thời gian còn lại dựa trên:
-    // - chargeTimerEnd: Unix timestamp (ms) từ web app (Date.now())
-    // - chargeTimerStartTime: boot time (millis()) khi nhận hẹn giờ
-    // 
-    // Vì ESP không có NTP time, ta dùng thời gian tương đối:
-    // Gọi hẹn giờ từ web app = X ms (from now)
-    // Khi ESP nhận = boot time T
-    // Khi kiểm tra = boot time T + (now - T) = now
+  // 1. Kiểm tra Hẹn giờ sạc từ Firebase
+  if (chargeTimerActive && chargeTimerEnd > 0) {
+    // Lấy thời gian hiện tại (Unix timestamp - milliseconds)
+    // chargeTimerEnd từ Firebase là milliseconds
+    unsigned long currentMillis = now; // Hoặc lấy từ NTP nếu có
     
-    // Cách tính: Dùng timestamp Firebase làm reference
-    // Time elapsed = (now - chargeTimerStartTime) 
-    // Time remaining = chargeTimerEnd - (chargeTimerEnd - X) - time_elapsed
-    // = X - time_elapsed
+    // Chuyển đổi chargeTimerEnd (từ web app) so với thời gian ESP
+    // Web app gửi Date.now() (ms since 1970), ESP dùng millis() (ms since boot)
+    // Cần tính toán offset hoặc dùng thời gian tương đối
     
-    // Đơn giản: Web app gửi "còn 3600000 ms" có thể tính từ Date.now() khi gửi
-    // ESP dùng boot time để count down
-    
-    unsigned long elapsedTime = now - chargeTimerStartTime;
-    unsigned long initialDuration = chargeTimerEnd; // Dùng trực tiếp làm duration (ms)
-    
-    if (elapsedTime >= initialDuration) {
-      // HẾT THỜI GIỜ SẠC
-      Serial.println("[CHARGE TIMER] Het thoi gian sac - Ngat relay");
-      chargeTimerActive = false;
-      relayOn = false;
+    // Đơn giản hóa: Kiểm tra mỗi giây
+    if (now - lastChargeTimerCheck >= 1000) {
+      lastChargeTimerCheck = now;
       
-      // Gửi SMS thông báo hẹn giờ sạc xong
-      if (!chargeTimerDoneNotified) {
-        sendSMS("Thong bao: Hen gio sac da hoan thanh. Da sac xong.");
-        chargeTimerDoneNotified = true;
-      }
-    } else {
-      // ĐANG SẠC - relay BẬT
-      relayOn = true;
-      chargeTimerDoneNotified = false; // Reset flag khi sạc tiếp tục
-      unsigned long remainingTime = initialDuration - elapsedTime;
-      
-      // Log mỗi 10 giây
-      if (now - lastChargeTimerCheck >= 10000) {
-        lastChargeTimerCheck = now;
-        Serial.print("[CHARGE TIMER] Thoi gian con: ");
-        Serial.print(remainingTime / 1000);
-        Serial.println(" giay");
-      }
+      // Nếu đã hết thời gian (giả sử chargeTimerEnd là relative time)
+      // Hoặc implement NTP để sync time chính xác
+      // Tạm thời: Log để debug
+      Serial.print("Charge timer active, end: ");
+      Serial.println(chargeTimerEnd);
     }
+    
+    // Bật relay khi có hẹn giờ
+    relayOn = true;
+  } else {
+    // Không có hẹn giờ - xử lý bình thường
   }
   
   if (!autoMode) return; 
@@ -289,7 +441,7 @@ void checkSystemStatus() {
       relayOn = false; 
       chargeTimerActive = false; // Hủy hẹn giờ khi đầy
       if (!fullBatNotified) {
-         sendSMS("Thong bao: Pin da day (54V). Da sac xong.");
+         sendSMS("Thong bao: Pin da day (54V). Da ngat sac.");
          fullBatNotified = true;
       }
     }
@@ -406,13 +558,29 @@ void setup(){
   Serial.println("Khoi tao SIM800L...");
   simSend("AT"); 
   simSend("ATE0"); 
-  simSend("AT+CMGF=1");  // Chỉ cấu hình SMS text mode
+  simSend("AT+CMGF=1");
+  simSend("AT+CGATT=1", 2000);
   
-  Serial.println("SIM800L khoi tao - Chi su dung SMS va goi dien!");
+  // Cấu hình GPRS cho Firebase
+  Serial.println("Cau hinh GPRS...");
+  simSend("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
+  simSend("AT+SAPBR=3,1,\"APN\",\"internet\""); 
+  simSend("AT+SAPBR=1,1", 3000);
+  simSend("AT+SAPBR=2,1");
+  
+  Serial.println("He thong khoi dong xong!");
   Serial.println("========================================");
   Serial.println("KHKT 2026 - He thong Phong Chong Chay No");
-  Serial.println("Giao tiep Firebase qua WiFi tu Web App");
+  Serial.println("Giao tiep Firebase qua SIM800L");
   Serial.println("========================================");
+  
+  // Khởi tạo đường dẫn Firebase lần đầu
+  Serial.println("Khoi tao duong dan Firebase...");
+  delay(2000);
+  sendDataToFirebase();  // Tạo sensor/
+  delay(1000);
+  sendControlStatusToFirebase();  // Tạo controls/
+  Serial.println("Duong dan Firebase da san sang!");
 }
 
 void loop(){
@@ -424,8 +592,28 @@ void loop(){
     checkSystemStatus(); 
   }
 
-  // GIAO TIẾP FIREBASE QUA WIFI: 
-  // Dữ liệu cảm biến được gửi lên từ Web App (thông qua Firebase Realtime DB)
-  // Lệnh điều khiển được đọc từ Firebase thông qua Web App
-  // Module SIM800L chỉ dùng để gửi SMS/Call khi cảnh báo
+  if(now - lastLocationCheck > 60000) {
+    lastLocationCheck = now;
+    getSimLocation(); 
+  }
+
+  // Gửi sensor data mỗi 8s (tối ưu)
+  if(now - lastSendFirebase > 8000){
+    lastSendFirebase = now;
+    sendDataToFirebase();
+    delay(500);
+    
+    // CHỈ gửi controls khi ở chế độ AUTO (tránh ghi đè lệnh thủ công)
+    if(autoMode) {
+      sendControlStatusToFirebase();
+    } else {
+      Serial.println("[MANUAL] Khong ghi de controls/");
+    }
+  }
+
+  // Đọc controls từ Firebase mỗi 2s để phản hồi nhanh
+  if(now - lastReadFirebase > 2000){
+    lastReadFirebase = now;
+    readControlFromFirebase();
+  }
 }
