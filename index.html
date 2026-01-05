@@ -170,6 +170,7 @@
                                             <div class="progress mt-2" style="height: 8px;">
                                                 <div class="progress-bar bg-danger" id="temp-surface-bar" style="width: 0%"></div>
                                             </div>
+                                            <small class="d-block mt-1 text-muted">Cảm biến bề mặt</small>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -182,6 +183,7 @@
                                             <div class="progress mt-2" style="height: 8px;">
                                                 <div class="progress-bar bg-primary" id="temp-inside-bar" style="width: 0%"></div>
                                             </div>
+                                            <small class="d-block mt-1 text-muted">Cảm biến bên trong</small>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -194,6 +196,7 @@
                                             <div class="progress mt-2" style="height: 8px;">
                                                 <div class="progress-bar bg-info" id="temp-outside-bar" style="width: 0%"></div>
                                             </div>
+                                            <small class="d-block mt-1 text-muted">Cảm biến bên ngoài</small>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -206,6 +209,7 @@
                                             <div class="progress mt-2" style="height: 8px;">
                                                 <div class="progress-bar bg-warning" id="temp-environment-bar" style="width: 0%"></div>
                                             </div>
+                                            <small class="d-block mt-1 text-muted">Cảm biến môi trường</small>
                                         </div>
                                     </div>
                                 </div>
@@ -222,16 +226,17 @@
                                 <div class="power-metric mb-4">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="text-muted"><i class="fas fa-plug"></i> Điện áp</span>
-                                        <h4 class="mb-0 text-primary"><span id="voltage">--</span> V</h4>
+                                        <h4 class="mb-0 text-primary"><span id="voltage">55.00</span> V</h4>
                                     </div>
                                     <div class="power-bar">
-                                        <div class="power-bar-fill bg-primary" id="voltage-bar"></div>
+                                        <div class="power-bar-fill bg-primary" id="voltage-bar" style="width: 55%;"></div>
                                     </div>
+                                    <small class="d-block mt-1 text-muted">Mặc định: 55V (tự điều chỉnh sau 2 giây)</small>
                                 </div>
                                 <div class="power-metric mb-4">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="text-muted"><i class="fas fa-charging-station"></i> Dòng sạc</span>
-                                        <h4 class="mb-0 text-success"><span id="current">--</span> A</h4>
+                                        <h4 class="mb-0 text-success"><span id="current">0.00</span> A</h4>
                                     </div>
                                     <div class="power-bar">
                                         <div class="power-bar-fill bg-success" id="current-bar"></div>
@@ -240,11 +245,14 @@
                                 <div class="battery-display">
                                     <div class="text-center mb-3">
                                         <i class="fas fa-battery-three-quarters fa-3x text-success" id="battery-icon"></i>
-                                        <h2 class="mt-2 mb-0"><span id="battery">--</span>%</h2>
-                                        <small class="text-muted">Pin Box</small>
+                                        <h2 class="mt-2 mb-0"><span id="battery">0</span>%</h2>
+                                        <small class="text-muted">Pin Box - Trạng thái pin hệ thống</small>
                                     </div>
                                     <div class="progress" style="height: 20px;">
                                         <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" id="battery-fill" style="width: 0%"></div>
+                                    </div>
+                                    <div class="mt-2 text-center">
+                                        <small class="text-muted d-block">Tự điều chỉnh sau 2 giây nếu không có dữ liệu</small>
                                     </div>
                                 </div>
                             </div>
