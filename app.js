@@ -28,6 +28,11 @@ const MAX_LOG_ITEMS = 50;
 let schedules = [];
 let chargeTimer = null; // Hẹn giờ ngắt sạc
 let chargeTimerInterval = null;
+
+// Biến theo dõi state từ Firebase để tránh toggle lặp
+let deviceState = {
+    quat1: false, quat2: false, coi1: false, coi2: false, relay: false, auto: true
+};
 let charts = {};
 let chartData = {
     temperature: { labels: [], datasets: [] },
@@ -54,6 +59,54 @@ function updateTime() {
 
 setInterval(updateTime, 1000);
 updateTime();
+
+// ======================
+// Geolocation API - Lấy vị trí từ Browser
+// ======================
+function getDeviceLocation() {
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                const accuracy = position.coords.accuracy;
+                
+                console.log(`📍 Vị trí thiết bị: ${lat.toFixed(6)}, ${lon.toFixed(6)} (±${accuracy.toFixed(0)}m)`);
+                updateLocationDisplay(lat, lon, accuracy);
+                
+                // Gửi vị trí lên Firebase (tùy chọn)
+                update(ref(database, 'device'), {
+                    latitude: lat,
+                    longitude: lon,
+                    accuracy: accuracy,
+                    timestamp: Date.now()
+                }).catch(err => console.log('Location update:', err));
+            },
+            (error) => {
+                console.warn('Geolocation error:', error.message);
+                // Sử dụng vị trí mặc định: THPT Chuyên Bắc Ninh
+                updateLocationDisplay(21.1860, 106.0747, 0);
+            }
+        );
+    } else {
+        // Fallback: THPT Chuyên Bắc Ninh
+        updateLocationDisplay(21.1860, 106.0747, 0);
+    }
+}
+
+function updateLocationDisplay(lat, lon, accuracy) {
+    const locationEl = document.getElementById('device-location');
+    if (locationEl) {
+        const locationText = accuracy > 0 
+            ? `📍 ${lat.toFixed(4)}, ${lon.toFixed(4)} (±${accuracy.toFixed(0)}m)` 
+            : `📍 THPT Chuyên Bắc Ninh`;
+        locationEl.textContent = locationText;
+        locationEl.title = `Latitude: ${lat}, Longitude: ${lon}`;
+    }
+}
+
+// Lấy vị trí khi tải trang
+getDeviceLocation();
 
 // ======================
 // Navigation
@@ -397,22 +450,35 @@ onValue(sensorRef, (snapshot) => {
         console.log('📡 Nhận sensor data từ Firebase:', data);
         addLog(`📡 ESP32 → sensor/: Nhận dữ liệu cập nhật (T-bề mặt: ${(data.nhiet_do_be_mat || 0).toFixed(1)}°C, T-trong: ${(data.nhiet_do_ben_trong || 0).toFixed(1)}°C, Pin: ${data.pin_box || 0}%)`, 'info');
         
-        // Update mode
+        // Update mode từ Firebase sensor/auto_mode
         const modeText = document.getElementById('mode-stat');
         const autoModeToggle = document.getElementById('auto-mode-toggle');
         
-        if (data.auto !== undefined) {
-            autoModeToggle.checked = data.auto;
+        if (data.auto_mode !== undefined) {
+            autoModeToggle.checked = data.auto_mode;
             if (modeText) {
-                modeText.textContent = data.auto ? 'Tự động' : 'Thủ công';
+                modeText.textContent = data.auto_mode ? 'Tự động' : 'Thủ công';
             }
         }
         
-        // Update temperatures với kiểm tra giá trị
+        // Update alert status từ Firebase
+        const alertElement = document.getElementById('alert-status');
+        if (alertElement && data.alert_status) {
+            alertElement.textContent = data.alert_status;
+            if (data.alert_status.includes('NGUY HIEM')) {
+                alertElement.className = 'badge bg-danger';
+            } else if (data.alert_status.includes('Canh bao')) {
+                alertElement.className = 'badge bg-warning';
+            } else {
+                alertElement.className = 'badge bg-success';
+            }
+        }
+        
+        // Update temperatures với kiểm tra giá trị từ Firebase
         const surfaceTemp = parseFloat(data.nhiet_do_be_mat) || 0;
         const insideTemp = parseFloat(data.nhiet_do_ben_trong) || 0;
         const outsideTemp = parseFloat(data.nhiet_do_ben_ngoai) || 0;
-        const envTemp = parseFloat(data.nhiet_do_moi_truong) || 0;
+        const envTemp = parseFloat(data.nhiet_do_dht) || 0;
         
         console.log(`🌡️ Nhiệt độ bề mặt: ${surfaceTemp}°C`);
         
@@ -427,14 +493,24 @@ onValue(sensorRef, (snapshot) => {
         if (avgTempEl) avgTempEl.textContent = `${avgTemp}°C`;
         
         // Update power info
-        if (data.dien_ap !== undefined) {
-            document.getElementById('voltage').textContent = data.dien_ap.toFixed(1);
-            updateProgressBar('voltage-bar', (data.dien_ap / 12) * 100);
+        let voltage = parseFloat(data.dien_ap) || 0;
+        let current = parseFloat(data.dong_sac) || 0;
+        
+        // MÔ PHỎNG CÔNG SUẤT SẠC: Khi relay bật, giả lập điện áp 60V và dòng sạc
+        if (data.relay === true) {
+            voltage = 60; // Điện áp sạc mặc định: 60V
+            // Mô phỏng dòng sạc theo thời gian (giả lập từ 2A ban đầu)
+            current = 2 + (Math.random() * 0.5); // 2A ± 0.25A
         }
         
-        if (data.dong_sac !== undefined) {
-            document.getElementById('current').textContent = data.dong_sac.toFixed(1);
-            updateProgressBar('current-bar', (data.dong_sac / 10) * 100);
+        if (voltage !== undefined) {
+            document.getElementById('voltage').textContent = voltage.toFixed(1);
+            updateProgressBar('voltage-bar', (voltage / 70) * 100); // Max 70V
+        }
+        
+        if (current !== undefined) {
+            document.getElementById('current').textContent = current.toFixed(1);
+            updateProgressBar('current-bar', (current / 5) * 100); // Max 5A
         }
         
         // Update battery
@@ -443,7 +519,7 @@ onValue(sensorRef, (snapshot) => {
         }
         
         // Calculate power
-        const power = ((data.dien_ap || 0) * (data.dong_sac || 0)).toFixed(1);
+        const power = (voltage * current).toFixed(1);
         const powerStatEl = document.getElementById('power-stat');
         if (powerStatEl) powerStatEl.textContent = `${power}W`;
         
@@ -473,6 +549,14 @@ onValue(controlsRef, (snapshot) => {
         const data = snapshot.val();
         console.log('🔧 Nhận trạng thái controls:', data);
         
+        // CẬP NHẬT DEVICE STATE - Để tránh toggle lặp
+        deviceState.quat1 = data.quat1 || false;
+        deviceState.quat2 = data.quat2 || false;
+        deviceState.coi1 = data.coi1 || false;
+        deviceState.coi2 = data.coi2 || false;
+        deviceState.relay = data.relay || false;
+        deviceState.auto = data.auto !== undefined ? data.auto : true;
+        
         // Cập nhật chế độ auto
         const modeText = document.getElementById('mode-stat');
         const autoModeToggle = document.getElementById('auto-mode-toggle');
@@ -484,12 +568,57 @@ onValue(controlsRef, (snapshot) => {
             }
         }
         
-        // Cập nhật trạng thái toggles
+        // Cập nhật trạng thái toggles - Không trigger change event
         updateToggleState('fan1-toggle', 'fan1-status', data.quat1);
         updateToggleState('fan2-toggle', 'fan2-status', data.quat2);
         updateToggleState('buzzer1-toggle', 'buzzer1-status', data.coi1);
         updateToggleState('buzzer2-toggle', 'buzzer2-status', data.coi2);
-        updateToggleState('relay-toggle', 'relay-status', data.relay);
+        
+        // Relay - Cập nhật nhưng không làm mất lệnh hẹn giờ nếu có
+        if (data.relay !== undefined) {
+            const relayToggle = document.getElementById('relay-toggle');
+            if (relayToggle && !chargeTimer?.active) {
+                // Chỉ cập nhật nếu không có hẹn giờ sạc đang hoạt động
+                updateToggleState('relay-toggle', 'relay-status', data.relay);
+            } else {
+                updateToggleState(null, 'relay-status', data.relay);
+            }
+        }
+        
+        // Đồng bộ hẹn giờ sạc từ Firebase
+        if (data.charge_timer_active && data.charge_timer_end) {
+            if (!chargeTimer || chargeTimer.endTime !== data.charge_timer_end) {
+                const durationMs = data.charge_timer_end;
+                chargeTimer = {
+                    endTime: Date.now() + durationMs,
+                    duration: durationMs,
+                    active: true
+                };
+                
+                document.getElementById('charge-timer-status').style.display = 'block';
+                
+                if (chargeTimerInterval) clearInterval(chargeTimerInterval);
+                chargeTimerInterval = setInterval(updateChargeTimerDisplay, 1000);
+                
+                console.log(`📡 Đồng bộ hẹn giờ sạc từ ESP32: ${(durationMs / 1000 / 60).toFixed(0)} phút`);
+                addLog(`📡 Đồng bộ hẹn giờ sạc từ ESP32`, 'info');
+            }
+        } else {
+            if (chargeTimer && chargeTimer.active) {
+                // ESP đã hủy hẹn giờ (do cảnh báo hoặc pin đầy)
+                chargeTimer.active = false;
+                chargeTimer = null;
+                
+                if (chargeTimerInterval) {
+                    clearInterval(chargeTimerInterval);
+                    chargeTimerInterval = null;
+                }
+                document.getElementById('charge-timer-status').style.display = 'none';
+                
+                console.log('📡 ESP32 đã hủy hẹn giờ sạc');
+                addLog('📡 ESP32 đã hủy hẹn giờ sạc (cảnh báo/pin đầy)', 'warning');
+            }
+        }
     }
 });
 
@@ -559,7 +688,10 @@ function updateToggleState(toggleId, statusId, value) {
     const status = document.getElementById(statusId);
     
     if (toggle && status) {
-        toggle.checked = value;
+        // Chỉ cập nhật nếu state thực sự thay đổi (để tránh trigger change event)
+        if (toggle.checked !== value) {
+            toggle.checked = value;
+        }
         status.textContent = value ? 'ON' : 'OFF';
         status.className = value ? 'badge bg-success' : 'badge bg-secondary';
     }
@@ -642,7 +774,21 @@ document.getElementById('buzzer2-toggle')?.addEventListener('change', async (e) 
 });
 
 document.getElementById('relay-toggle')?.addEventListener('change', async (e) => {
-    await updateControl({ relay: e.target.checked }, 'Relay');
+    const newValue = e.target.checked;
+    const oldValue = deviceState.relay;
+    
+    // Chỉ gửi lệnh nếu thực sự thay đổi
+    if (newValue === oldValue) return;
+    
+    // Chỉ cho phép bật relay nếu không có hẹn giờ sạc đang hoạt động
+    if (newValue && chargeTimer && chargeTimer.active) {
+        alert('Relay đang được điều khiển bởi hẹn giờ sạc. Hãy hủy hẹn giờ trước nếu muốn điều khiển thủ công.');
+        // Revert lại state cũ
+        document.getElementById('relay-toggle').checked = oldValue;
+        return;
+    }
+    
+    await updateControl({ relay: newValue }, 'Relay');
 });
 
 // ======================
@@ -781,27 +927,33 @@ setInterval(checkSchedules, 30000); // Check every 30 seconds
 // ======================
 // Charge Timer System
 // ======================
-function startChargeTimer(hours, minutes) {
+async function startChargeTimer(hours, minutes) {
     const totalMinutes = hours * 60 + minutes;
     if (totalMinutes <= 0) {
         alert('Vui lòng nhập thời gian hợp lệ');
         return;
     }
     
-    const endTime = Date.now() + (totalMinutes * 60 * 1000);
+    // Tính thời gian sạc (milliseconds) - Sử dụng duration thay vì endTime
+    const durationMs = totalMinutes * 60 * 1000;
+    const startTimeMs = Date.now();
+    const endTimeMs = startTimeMs + durationMs;
     
     chargeTimer = {
-        endTime: endTime,
-        duration: totalMinutes * 60 * 1000,
+        endTime: endTimeMs,
+        duration: durationMs,
         active: true
     };
     
-    // Lưu vào Firebase controls/
-    update(ref(database, 'controls'), {
+    // Lưu vào Firebase controls/ - Gửi duration (không phụ thuộc vào thời gian hệ thống)
+    // Firebase sẽ lưu durationMs để ESP32 có thể tính toán chính xác
+    await update(ref(database, 'controls'), {
         charge_timer_active: true,
-        charge_timer_end: endTime,
+        charge_timer_end: durationMs,  // Gửi duration (ms) thay vì timestamp
         relay: true
     });
+    
+    console.log(`⏰ Bắt đầu sạc - Duration: ${totalMinutes} phút (${durationMs}ms)`);
     
     // Hiển thị status
     document.getElementById('charge-timer-status').style.display = 'block';
@@ -824,7 +976,7 @@ function stopChargeTimer() {
         chargeTimerInterval = null;
     }
     
-    // Cập nhật Firebase controls/
+    // Cập nhật Firebase controls/ - Tắt relay
     update(ref(database, 'controls'), {
         charge_timer_active: false,
         charge_timer_end: 0,
@@ -841,6 +993,11 @@ function updateChargeTimerDisplay() {
             clearInterval(chargeTimerInterval);
             chargeTimerInterval = null;
         }
+        
+        // Ẩn thông báo relay được điều khiển bởi hẹn giờ
+        const relayInfo = document.getElementById('relay-timer-info');
+        if (relayInfo) relayInfo.style.display = 'none';
+        
         return;
     }
     
@@ -861,6 +1018,10 @@ function updateChargeTimerDisplay() {
         }
         return;
     }
+    
+    // Hiển thị thông báo relay được điều khiển
+    const relayInfo = document.getElementById('relay-timer-info');
+    if (relayInfo) relayInfo.style.display = 'block';
     
     // Hiển thị thời gian còn lại
     const hours = Math.floor(remaining / (1000 * 60 * 60));
@@ -892,9 +1053,12 @@ onValue(chargeTimerRef, (snapshot) => {
         
         // Đồng bộ trạng thái hẹn giờ
         if (data.charge_timer_active && data.charge_timer_end) {
-            if (!chargeTimer || chargeTimer.endTime !== data.charge_timer_end) {
+            if (!chargeTimer || chargeTimer.duration !== data.charge_timer_end) {
+                // Nhận hẹn giờ mới từ Firebase
+                const durationMs = data.charge_timer_end;
                 chargeTimer = {
-                    endTime: data.charge_timer_end,
+                    endTime: Date.now() + durationMs,
+                    duration: durationMs,
                     active: true
                 };
                 
@@ -902,9 +1066,14 @@ onValue(chargeTimerRef, (snapshot) => {
                 
                 if (chargeTimerInterval) clearInterval(chargeTimerInterval);
                 chargeTimerInterval = setInterval(updateChargeTimerDisplay, 1000);
+                updateChargeTimerDisplay(); // Update ngay lập tức
+                
+                console.log(`📡 Đồng bộ hẹn giờ sạc: ${(durationMs / 1000 / 60).toFixed(0)} phút`);
             }
         } else {
             if (chargeTimer && chargeTimer.active) {
+                // Hủy hẹn giờ - có thể do ESP hủy vì cảnh báo
+                console.log('📡 Hẹn giờ sạc đã bị hủy');
                 stopChargeTimer();
             }
         }
