@@ -37,10 +37,13 @@ let chartData = {
 const MAX_CHART_POINTS = 20;
 
 // Default values with auto-adjustment timer
-const DEFAULT_VOLTAGE = 55; // Default web voltage is 55V
+const DEFAULT_VOLTAGE = 0; // Default web voltage is 0V (show 0 when relay off)
+const RELAY_VOLTAGE = 55; // Fake display when relay is ON
+const RELAY_CURRENT = 1.98; // Fake current when relay is ON
 const SENSOR_AUTO_ADJUST_DELAY = 2000; // Auto-adjust sensors after 2 seconds
 let sensorAdjustmentTimer = null;
 let lastSensorData = {};
+let currentRelayOn = false; // Track latest relay state to prioritize UI display when relay is ON 
 
 // ======================
 // Utility Functions
@@ -399,20 +402,29 @@ function setupSensorAutoAdjustment() {
         if (lastSensorData.timestamp) {
             const timeSinceLastUpdate = Date.now() - lastSensorData.timestamp;
             
-            // If no data received within 2 seconds, display default values
             if (timeSinceLastUpdate > SENSOR_AUTO_ADJUST_DELAY) {
-                // Auto-adjust to default values
                 const voltageEl = document.getElementById('voltage');
                 const currentEl = document.getElementById('current');
-                
-                if (voltageEl && voltageEl.textContent === '--') {
-                    voltageEl.textContent = DEFAULT_VOLTAGE.toFixed(2);
-                    updateProgressBar('voltage-bar', (DEFAULT_VOLTAGE / 100) * 100);
-                }
-                
-                if (currentEl && currentEl.textContent === '--') {
-                    currentEl.textContent = '0.00';
-                    updateProgressBar('current-bar', 0);
+
+                if (currentRelayOn) {
+                    // Keep showing relay fake values while relay is ON
+                    if (voltageEl) {
+                        voltageEl.textContent = RELAY_VOLTAGE.toFixed(2);
+                        updateProgressBar('voltage-bar', (RELAY_VOLTAGE / 100) * 100);
+                    }
+                    if (currentEl) {
+                        currentEl.textContent = RELAY_CURRENT.toFixed(2);
+                        updateProgressBar('current-bar', Math.min((RELAY_CURRENT / 50) * 100, 100));
+                    }
+                } else {
+                    if (voltageEl) {
+                        voltageEl.textContent = DEFAULT_VOLTAGE.toFixed(2);
+                        updateProgressBar('voltage-bar', (DEFAULT_VOLTAGE / 100) * 100);
+                    }
+                    if (currentEl) {
+                        currentEl.textContent = '0.00';
+                        updateProgressBar('current-bar', 0);
+                    }
                 }
             }
         }
@@ -470,16 +482,16 @@ onValue(sensorRef, (snapshot) => {
         // Update power info - dien_ap_pin là điện áp pin
         const voltagePin = data.dien_ap_pin !== undefined && data.dien_ap_pin !== null ? data.dien_ap_pin : null;
         if (voltagePin !== null && voltagePin !== 0) {
-            document.getElementById('voltage').textContent = voltagePin.toFixed(2);
-            updateProgressBar('voltage-bar', (voltagePin / 12) * 100);
+            document.getElementById('voltage').textContent = parseFloat(voltagePin).toFixed(2);
+            updateProgressBar('voltage-bar', (parseFloat(voltagePin) / 100) * 100);
         } else {
             document.getElementById('voltage').textContent = DEFAULT_VOLTAGE.toFixed(2);
             updateProgressBar('voltage-bar', (DEFAULT_VOLTAGE / 100) * 100);
         }
         
         if (data.dong_sac !== undefined && data.dong_sac !== null && data.dong_sac !== 0) {
-            document.getElementById('current').textContent = data.dong_sac.toFixed(2);
-            updateProgressBar('current-bar', Math.min((data.dong_sac / 50) * 100, 100));
+            document.getElementById('current').textContent = parseFloat(data.dong_sac).toFixed(2);
+            updateProgressBar('current-bar', Math.min((parseFloat(data.dong_sac) / 50) * 100, 100));
         } else {
             document.getElementById('current').textContent = '0.00';
             updateProgressBar('current-bar', 0);
@@ -491,6 +503,33 @@ onValue(sensorRef, (snapshot) => {
             current: data.dong_sac || 0,
             timestamp: Date.now()
         };
+        
+        // If relay is currently ON, override displayed values with fake relay values
+        if (currentRelayOn) {
+            document.getElementById('voltage').textContent = RELAY_VOLTAGE.toFixed(2);
+            updateProgressBar('voltage-bar', (RELAY_VOLTAGE / 100) * 100);
+            document.getElementById('current').textContent = RELAY_CURRENT.toFixed(2);
+            updateProgressBar('current-bar', Math.min((RELAY_CURRENT / 50) * 100, 100));
+            lastSensorData = { voltage: RELAY_VOLTAGE, current: RELAY_CURRENT, timestamp: Date.now() };
+
+            // Update power stat and charts with relay fake values
+            const relayPower = Number((RELAY_VOLTAGE * RELAY_CURRENT).toFixed(1));
+            const powerStatEl = document.getElementById('power-stat');
+            if (powerStatEl) powerStatEl.textContent = `${relayPower}W`;
+
+            // Push to power chart for real-time fake effect
+            if (charts.power) {
+                const nowLabel = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                if (charts.power.data.labels.length >= MAX_CHART_POINTS) {
+                    charts.power.data.labels.shift();
+                    charts.power.data.datasets.forEach(dataset => dataset.data.shift());
+                }
+                charts.power.data.labels.push(nowLabel);
+                charts.power.data.datasets[0].data.push(RELAY_VOLTAGE);
+                charts.power.data.datasets[1].data.push(RELAY_CURRENT);
+                charts.power.update('none');
+            }
+        }
         
         // Update battery
         if (data.pin_percent !== undefined) {
@@ -508,17 +547,39 @@ onValue(sensorRef, (snapshot) => {
         if (alertEl && data.alert_status !== undefined) {
             alertEl.textContent = data.alert_status;
             alertEl.className = data.alert_status === 'An toan' ? 'badge bg-success' : 'badge bg-danger';
+            if (data.alert_status === 'Nguy hiem') {
+                // Best-effort: try to resume audio and play loud; request notification if blocked
+                tryEnableAudioAndPlayLoud();
+                // If banner UI exists, keep it in sync
+                if (typeof showDangerBanner === 'function') showDangerBanner('NGUY HIỂM');
+                requestDangerNotification();
+            } else {
+                // Stop the alarm and hide any danger banner
+                stopAlarm();
+                if (typeof hideDangerBanner === 'function') hideDangerBanner();
+            }
         }
         
         // Calculate power from dien_ap_sac (charging voltage) and dong_sac (charging current)
-        const dien_ap_sac_val = data.dien_ap_sac !== undefined && data.dien_ap_sac !== null ? data.dien_ap_sac : 0;
-        const dong_sac_val = data.dong_sac !== undefined && data.dong_sac !== null ? data.dong_sac : 0;
+        let dien_ap_sac_val;
+        let dong_sac_val;
+        if (currentRelayOn) {
+            dien_ap_sac_val = RELAY_VOLTAGE;
+            dong_sac_val = RELAY_CURRENT;
+        } else {
+            dien_ap_sac_val = data.dien_ap_sac !== undefined && data.dien_ap_sac !== null ? parseFloat(data.dien_ap_sac) : 0;
+            dong_sac_val = data.dong_sac !== undefined && data.dong_sac !== null ? parseFloat(data.dong_sac) : 0;
+        }
+
         const power = (dien_ap_sac_val * dong_sac_val).toFixed(1);
         const powerStatEl = document.getElementById('power-stat');
-        if (powerStatEl) powerStatEl.textContent = power > 0 ? `${power}W` : '--';
+        if (powerStatEl) powerStatEl.textContent = (dien_ap_sac_val && dong_sac_val) ? `${power}W` : (currentRelayOn ? `${(RELAY_VOLTAGE * RELAY_CURRENT).toFixed(1)}W` : '--');
         
-        // Update charts
-        updateCharts(data);
+        // Update charts - if relay on, pass fake values so charts stay consistent
+        const chartDataObj = Object.assign({}, data);
+        chartDataObj.dien_ap = dien_ap_sac_val;
+        chartDataObj.dong_sac = dong_sac_val;
+        updateCharts(chartDataObj);
         
         // Check alerts với giá trị đã parse
         checkTemperatureAlert(surfaceTemp, 'bề mặt');
@@ -539,6 +600,8 @@ onValue(relayRef, (snapshot) => {
         console.log('🔌 Nhận trạng thái relay:', data);
         
         if (data.relay_on !== undefined) {
+            currentRelayOn = !!data.relay_on;
+
             const relayToggle = document.getElementById('relay-toggle');
             const relayStatus = document.getElementById('relay-status');
             
@@ -546,6 +609,43 @@ onValue(relayRef, (snapshot) => {
             if (relayStatus) {
                 relayStatus.textContent = data.relay_on ? 'ON' : 'OFF';
                 relayStatus.className = data.relay_on ? 'badge bg-success' : 'badge bg-secondary';
+            }
+            
+            // Update displayed voltage and current based on relay state (fake values)
+            if (data.relay_on) {
+                document.getElementById('voltage').textContent = RELAY_VOLTAGE.toFixed(2);
+                updateProgressBar('voltage-bar', (RELAY_VOLTAGE / 100) * 100);
+                document.getElementById('current').textContent = RELAY_CURRENT.toFixed(2);
+                updateProgressBar('current-bar', Math.min((RELAY_CURRENT / 50) * 100, 100));
+                lastSensorData = { voltage: RELAY_VOLTAGE, current: RELAY_CURRENT, timestamp: Date.now() };
+
+                // Update power text
+                const relayPower = Number((RELAY_VOLTAGE * RELAY_CURRENT).toFixed(1));
+                const powerStatEl = document.getElementById('power-stat');
+                if (powerStatEl) powerStatEl.textContent = `${relayPower}W`;
+
+                // Add a realtime point to power chart
+                if (charts.power) {
+                    const nowLabel = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    if (charts.power.data.labels.length >= MAX_CHART_POINTS) {
+                        charts.power.data.labels.shift();
+                        charts.power.data.datasets.forEach(dataset => dataset.data.shift());
+                    }
+                    charts.power.data.labels.push(nowLabel);
+                    charts.power.data.datasets[0].data.push(RELAY_VOLTAGE);
+                    charts.power.data.datasets[1].data.push(RELAY_CURRENT);
+                    charts.power.update('none');
+                }
+            } else {
+                document.getElementById('voltage').textContent = DEFAULT_VOLTAGE.toFixed(2);
+                updateProgressBar('voltage-bar', (DEFAULT_VOLTAGE / 100) * 100);
+                document.getElementById('current').textContent = '0.00';
+                updateProgressBar('current-bar', 0);
+                lastSensorData = { voltage: DEFAULT_VOLTAGE, current: 0, timestamp: Date.now() };
+
+                // Reset power UI
+                const powerStatEl = document.getElementById('power-stat');
+                if (powerStatEl) powerStatEl.textContent = '--';
             }
         }
     }
@@ -645,6 +745,191 @@ function updateBattery(value) {
             if (batteryIconEl) batteryIconEl.className = 'fas fa-battery-three-quarters fa-3x text-success';
         }
     }
+}
+
+// Audio alarm system
+let audioContext = null;
+let alarmOsc = null;
+let alarmGain = null;
+let audioEnabled = false;
+let alarmPlaying = false;
+
+function initAudio() {
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+        console.warn('AudioContext not available:', e);
+    }
+}
+
+function startAlarm(loud = false) {
+    if (!audioEnabled) return;
+    if (!audioContext) initAudio();
+    if (!audioContext || alarmPlaying) return;
+    alarmOsc = audioContext.createOscillator();
+    alarmGain = audioContext.createGain();
+    alarmOsc.type = 'square';
+    // Increase frequency and gain for loud alarm
+    alarmOsc.frequency.value = loud ? 1200 : 880;
+    alarmGain.gain.value = loud ? 0.25 : 0.05;
+    alarmOsc.connect(alarmGain);
+    alarmGain.connect(audioContext.destination);
+    alarmOsc.start();
+    alarmPlaying = true;
+}
+
+function stopAlarm() {
+    try {
+        if (alarmPlaying && alarmOsc) {
+            alarmOsc.stop();
+            alarmOsc.disconnect();
+            alarmGain.disconnect();
+            alarmOsc = null;
+            alarmGain = null;
+            alarmPlaying = false;
+        }
+    } catch (e) {}
+}
+
+// Try to resume audio (requires user gesture in most browsers). If resume succeeds, start a loud alarm.
+async function tryEnableAudioAndPlayLoud() {
+    if (!audioContext) initAudio();
+    if (!audioContext) {
+        requestDangerNotification();
+        return;
+    }
+    try {
+        await audioContext.resume();
+        audioEnabled = true;
+        localStorage.setItem('audioAllowed', 'true');
+        // If alarm already playing at lower volume, boost it to loud
+        if (alarmPlaying && alarmGain) {
+            try {
+                alarmGain.gain.value = 0.25;
+                if (alarmOsc) alarmOsc.frequency.value = 1200;
+            } catch (e) { console.warn('Failed to boost alarm:', e); }
+        } else {
+            // Start loud alarm
+            startAlarm(true);
+        }
+    } catch (e) {
+        console.warn('Audio resume rejected or blocked:', e);
+        // Fallback: ask for notification permission to alert user
+        requestDangerNotification();
+    }
+}
+
+function requestDangerNotification() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+        try {
+            const n = new Notification('NGUY HIỂM! Hệ thống phát hiện nguy cơ', {
+                body: 'Mở trang để bật âm thanh cảnh báo.',
+                tag: 'danger-alert',
+                renotify: true
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+        } catch (e) {
+            console.warn('Notification failed:', e);
+        }
+    } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+                requestDangerNotification();
+            }
+        });
+    }
+} 
+
+// Initialize audio permission state from localStorage
+const savedAudioAllowed = localStorage.getItem('audioAllowed');
+if (savedAudioAllowed === 'true') {
+    audioEnabled = true;
+    document.getElementById('enable-sound-button').textContent = 'Âm thanh: ON';
+}
+
+document.getElementById('enable-sound-button')?.addEventListener('click', async () => {
+    if (!audioContext) initAudio();
+    if (!audioContext) return;
+    await audioContext.resume();
+    audioEnabled = true;
+    localStorage.setItem('audioAllowed', 'true');
+    document.getElementById('enable-sound-button').textContent = 'Âm thanh: ON';
+    addLog('Âm thanh cảnh báo đã được bật', 'success');
+    // If danger banner is visible, automatically start alarm
+    const dangerEl = document.getElementById('danger-alert');
+    if (dangerEl && !dangerEl.classList.contains('d-none')) {
+        startAlarm();
+        document.getElementById('play-alarm-button')?.classList.add('d-none');
+        document.getElementById('stop-alarm-button')?.classList.remove('d-none');
+    }
+});
+
+// Danger alert controls
+const dangerEl = document.getElementById('danger-alert');
+const playAlarmBtn = document.getElementById('play-alarm-button');
+const stopAlarmBtn = document.getElementById('stop-alarm-button');
+const allowSpeakerBtn = document.getElementById('allow-speaker-button');
+
+playAlarmBtn?.addEventListener('click', async () => {
+    if (!audioEnabled) {
+        // Ask user to allow speaker
+        if (!audioContext) initAudio();
+        if (!audioContext) return;
+        await audioContext.resume();
+        audioEnabled = true;
+        localStorage.setItem('audioAllowed', 'true');
+        document.getElementById('enable-sound-button').textContent = 'Âm thanh: ON';
+        addLog('Âm thanh cảnh báo đã được bật (từ banner)', 'success');
+    }
+    startAlarm();
+    playAlarmBtn.classList.add('d-none');
+    stopAlarmBtn.classList.remove('d-none');
+});
+
+stopAlarmBtn?.addEventListener('click', () => {
+    stopAlarm();
+    playAlarmBtn.classList.remove('d-none');
+    stopAlarmBtn.classList.add('d-none');
+});
+
+allowSpeakerBtn?.addEventListener('click', async () => {
+    if (!audioEnabled) {
+        if (!audioContext) initAudio();
+        if (!audioContext) return;
+        await audioContext.resume();
+        audioEnabled = true;
+        localStorage.setItem('audioAllowed', 'true');
+        document.getElementById('enable-sound-button').textContent = 'Âm thanh: ON';
+        addLog('Cho phép loa từ banner', 'success');
+    }
+    // start immediately
+    startAlarm();
+    playAlarmBtn?.classList.add('d-none');
+    stopAlarmBtn?.classList.remove('d-none');
+});
+
+// Helper to show/hide danger banner
+function showDangerBanner(message) {
+    const title = document.getElementById('danger-title');
+    if (title) title.textContent = message || 'NGUY HIỂM';
+    if (dangerEl) dangerEl.classList.remove('d-none');
+    // Auto-start if permission present
+    if (audioEnabled) {
+        startAlarm();
+        playAlarmBtn?.classList.add('d-none');
+        stopAlarmBtn?.classList.remove('d-none');
+    } else {
+        playAlarmBtn?.classList.remove('d-none');
+        stopAlarmBtn?.classList.add('d-none');
+    }
+}
+
+function hideDangerBanner() {
+    if (dangerEl) dangerEl.classList.add('d-none');
+    stopAlarm();
+    playAlarmBtn?.classList.remove('d-none');
+    stopAlarmBtn?.classList.add('d-none');
 }
 
 function updateToggleState(toggleId, statusId, value) {

@@ -129,9 +129,17 @@ void pushSensorData() {
   doc["nhiet_do_be_mat"] = mlx.readObjectTempC();
   doc["nhiet_do_ngoai"]  = mlx.readAmbientTempC();
 
-  doc["dien_ap_pin"] = readVoltage(ADC_PIN_VBAT);
-  doc["dien_ap_sac"] = readVoltage(ADC_PIN_VCHG);
-  doc["dong_sac"]    = analogRead(ADC_PIN_IACS);
+  // Use relay status to emulate charging values (web displays fake readings when relay is ON)
+  bool relayOn = getRelayCommand();
+  if (relayOn) {
+    doc["dien_ap_pin"] = 55;
+    doc["dien_ap_sac"] = 1.98;
+    doc["dong_sac"]    = 1.98; // fake current value
+  } else {
+    doc["dien_ap_pin"] = 0;
+    doc["dien_ap_sac"] = 0;
+    doc["dong_sac"]    = 0;
+  }
   doc["pin_percent"] = 100;
 
   doc["alert_status"] = digitalRead(SMOKE_PIN) ? "An toan" : "Nguy hiem";
@@ -167,7 +175,8 @@ bool getRelayCommand() {
     return false;
   }
 
-  return res == "true";
+  res.trim();
+  return res.indexOf("true") >= 0;
 }
 
 /* ================= SMS ================= */

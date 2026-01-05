@@ -51,6 +51,7 @@
             <div class="connection-indicator">
                 <i class="fas fa-circle" id="sidebar-status-icon"></i>
                 <span id="sidebar-status-text">Đang kết nối...</span>
+                <span class="ms-2 small text-muted" id="location-text-side">THPT CHUYÊN BẮC NINH</span>
             </div>
         </div>
     </nav>
@@ -69,12 +70,30 @@
                 </span>
                 <div class="d-flex align-items-center">
                     <span class="badge bg-success me-2" id="connection-status">
-                        <i class="fas fa-circle"></i> Đang kết nối...
+                        <i class="fas fa-circle"></i> Đang kết nối
                     </span>
+                    <span class="mx-2 small text-muted" id="location-text">THPT CHUYÊN BẮC NINH</span>
+                    <span class="badge bg-success me-2" id="alert-status">An toan</span>
+                    
                     <span class="text-muted" id="current-time"></span>
                 </div>
             </div>
         </nav>
+
+        <!-- Danger Alert Banner -->
+        <div id="danger-alert" class="alert alert-danger d-none shadow-lg" role="alert" style="position:fixed; top:70px; left:50%; transform:translateX(-50%); z-index:1050; width:90%; max-width:980px;">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> <strong id="danger-title">NGUY HIỂM</strong></h5>
+                    <div class="small">Hệ thống phát hiện <strong id="danger-location">THPT CHUYÊN BẮC NINH</strong>. Vui lòng kiểm tra ngay!</div>
+                </div>
+                <div class="ms-3">
+                    <button id="play-alarm-button" class="btn btn-danger me-2"><i class="fas fa-bell"></i> Phát còi</button>
+                    <button id="stop-alarm-button" class="btn btn-light me-2 d-none"><i class="fas fa-bell-slash"></i> Dừng</button>
+                    <button id="allow-speaker-button" class="btn btn-outline-light">Cho phép loa</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Main Dashboard -->
         <div class="container-fluid p-4">
@@ -226,12 +245,12 @@
                                 <div class="power-metric mb-4">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="text-muted"><i class="fas fa-plug"></i> Điện áp</span>
-                                        <h4 class="mb-0 text-primary"><span id="voltage">55.00</span> V</h4>
+                                        <h4 class="mb-0 text-primary"><span id="voltage">0.00</span> V</h4>
                                     </div>
                                     <div class="power-bar">
-                                        <div class="power-bar-fill bg-primary" id="voltage-bar" style="width: 55%;"></div>
+                                        <div class="power-bar-fill bg-primary" id="voltage-bar" style="width: 0%;"></div>
                                     </div>
-                                    <small class="d-block mt-1 text-muted">Mặc định: 55V (tự điều chỉnh sau 2 giây)</small>
+                                    <small class="d-block mt-1 text-muted"> </small>
                                 </div>
                                 <div class="power-metric mb-4">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -251,9 +270,7 @@
                                     <div class="progress" style="height: 20px;">
                                         <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" id="battery-fill" style="width: 0%"></div>
                                     </div>
-                                    <div class="mt-2 text-center">
-                                        <small class="text-muted d-block">Tự điều chỉnh sau 2 giây nếu không có dữ liệu</small>
-                                    </div>
+
                                 </div>
                             </div>
                         </div>
